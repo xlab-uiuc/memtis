@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ######## changes the below path
-BIN=/path/to/benchmark
-GRAPH_DIR=/path/to/benchmark/benchmark/graphs
+BIN=$MEMTIS_BENCH_DIR/gapbs
+GRAPH_DIR=$MEMTIS_BENCH_DIR/gapbs/benchmark/graphs
 
 BENCH_RUN="${BIN}/pr -f ${GRAPH_DIR}/twitter.sg -i1000 -t1e-4 -n20"
 BENCH_DRAM=""

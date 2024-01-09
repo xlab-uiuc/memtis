@@ -145,3 +145,13 @@ sudo echo 16 > /proc/sys/kernel/numa_balancing_demoted_threshold
 ```
 sudo echo 1 > /proc/sys/kernel/numa_balancing
 ```
+
+## Run with real CXL memory (`cxl` branch)
+
+Set env variables before excuting scripts as below.
+
+```shell
+cd memtis-userspace
+source set_env.sh
+```
+

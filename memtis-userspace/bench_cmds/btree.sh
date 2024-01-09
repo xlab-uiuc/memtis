@@ -1,6 +1,6 @@
 #!/bin/bash
 
-BIN=/path/to/benchmark
+BIN=$MEMTIS_BENCH_DIR/vmitosis-workloads/bin
 BENCH_RUN="${BIN}/bench_btree_mt"
 BENCH_DRAM=""
 
