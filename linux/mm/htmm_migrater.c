@@ -297,6 +297,12 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 }
 
 
+/**
+ *  call back for migrate_pages 
+ * 	@page : source page to migrate
+ *  @node : target node
+ * */
+
 static struct page *alloc_migrate_page(struct page *page, unsigned long node)
 {
     int nid = (int) node;
@@ -326,6 +332,10 @@ static struct page *alloc_migrate_page(struct page *page, unsigned long node)
     } else
 	newpage = __alloc_pages_node(nid, mask, 0);
 
+	pr_warn("memtis migration: src %lx @ nid %d, dst %lx @ nid %d\n",
+		page_to_pfn(page), page_to_nid(page), page_to_pfn(newpage), nid
+	);
+
     return newpage;
 }
 
@@ -345,7 +355,7 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
 
     if (target_nid == NUMA_NO_NODE)
 	return 0;
-
+	
     migrate_pages(migrate_list, alloc_migrate_page, NULL,
 	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
 
