@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# Figure 6
 BENCHMARKS="graph500-128GB graph500-192GB graph500-336GB graph500-690GB"
 
 sudo dmesg -c

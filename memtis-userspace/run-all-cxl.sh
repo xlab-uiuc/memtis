@@ -5,11 +5,17 @@ BENCHMARKS="XSBench graph500 gapbs-pr liblinear silo btree speccpu-bwaves speccp
 sudo dmesg -c
 
 # enable THP
-sudo echo "always" >| tee /sys/kernel/mm/transparent_hugepage/enabled
-sudo echo "always" >| tee /sys/kernel/mm/transparent_hugepage/defrag
+sudo sh -c "/usr/bin/echo 'always' > /sys/kernel/mm/transparent_hugepage/enabled"
+sudo sh -c "/usr/bin/echo 'always' > /sys/kernel/mm/transparent_hugepage/defrag"
+
+# decrease uncore freq
+# sudo ./scripts/set_uncore_freq.sh on
 
 for BENCH in ${BENCHMARKS};
 do
+    # Use 20 CPU cores.
+    export GOMP_CPU_AFFINITY=0-19
+
     if [[ -e ./bench_cmds/${BENCH}.sh ]]; then
 	source ./bench_cmds/${BENCH}.sh
     else
@@ -24,11 +30,13 @@ do
 
     if [[ "x${BENCH}" =~ "xspeccpu" ]]; then
 	/usr/bin/time -f "execution time %e (s)" \
-	    numactl -m 1 ${BENCH_RUN} < ${BENCH_ARG} 2>&1 \
+	    taskset -c 0-19 numactl -m 1 ${BENCH_RUN} < ${BENCH_ARG} 2>&1 \
 	    | tee ${LOG_DIR}/output.log
     else
 	/usr/bin/time -f "execution time %e (s)" \
-	    numactl -m 1 ${BENCH_RUN} 2>&1 \
+	    numactl -N 0 -m 1 ${BENCH_RUN} 2>&1 \
 	    | tee ${LOG_DIR}/output.log
     fi
 done
+
+# sudo ./scripts/set_uncore_freq.sh off

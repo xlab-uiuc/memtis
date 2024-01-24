@@ -1,4 +1,5 @@
 #!/bin/bash
+# Figure 14
 
 BENCHMARKS="XSBench graph500 gapbs-pr liblinear silo btree speccpu-bwaves speccpu-roms"
 #BENCHMARKS="gapbs-pr"

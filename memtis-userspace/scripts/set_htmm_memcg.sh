@@ -5,8 +5,10 @@ CGROUP_DIR=/sys/fs/cgroup
 BASH_PID=$2
 
 if [ "x$2" == "xremove" ]; then
-	sudo rmdir ${CGROUP_DIR}/${CGROUP_NAME}
-        exit
+    if [ -d ${CGROUP_DIR}/${CGROUP_NAME} ]; then
+        sudo rmdir ${CGROUP_DIR}/${CGROUP_NAME}
+    fi
+    exit
 fi
 
 if [ ! -d "${CGROUP_DIR}/${CGROUP_NAME}" ]; then
