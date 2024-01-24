@@ -146,12 +146,17 @@ sudo echo 16 > /proc/sys/kernel/numa_balancing_demoted_threshold
 sudo echo 1 > /proc/sys/kernel/numa_balancing
 ```
 
-## Run with real CXL memory (`cxl` branch)
+## Run with real CXL memory (`cxl` and `cxl-run-bench` branch)
 
-Set env variables before excuting scripts as below.
+Set proper DRAM size in the script of each benchmark (e.g. `bench_cmds/liblinear.sh`).
+
+Set env variables before excuting scripts as below. (Run benchmarks as a root.)
 
 ```shell
 cd memtis-userspace
+sudo su
 source set_env.sh
+./run-fig5-6-10.sh
 ```
 
+You need to use the proper dataset size of each benchmark that fits to the size of CXL memory. For example, you can split a dataset file of `liblinear` and use one of them.
