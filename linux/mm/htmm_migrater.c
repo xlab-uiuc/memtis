@@ -344,6 +344,8 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
 {
     int target_nid;
     unsigned int nr_succeeded = 0;
+    struct page *page;
+    struct page *page2;
 
     if (promotion)
 	target_nid = htmm_cxl_mode ? 0 : next_promotion_node(pgdat->node_id);
@@ -356,8 +358,17 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
     if (target_nid == NUMA_NO_NODE)
 	return 0;
 	
-    migrate_pages(migrate_list, alloc_migrate_page, NULL,
-	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
+// TODO: Disabling migration for profiling.
+//     migrate_pages(migrate_list, alloc_migrate_page, NULL,
+// 	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
+
+    // XXX, log targeted migrating pages
+    list_for_each_entry_safe(page, page2, migrate_list, lru) {
+        pr_warn("memtis src %lx @ nid %d, dst @ nid %d, pid %d\n",
+            page_to_pfn(page), pgdat->node_id, target_nid, current->pid);
+    }
+
+    nr_succeeded = 0;
 
     if (promotion)
 	count_vm_events(HTMM_NR_PROMOTED, nr_succeeded);
