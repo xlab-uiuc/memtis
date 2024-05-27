@@ -365,11 +365,11 @@ if (promotion){ // Do not promote pages. Print only.
     // XXX, log targeted migrating pages (only promotions)
     list_for_each_entry_safe (page, page2, migrate_list, lru) {
 	nr_pages++;
-	if (promotion) {
-	    pr_warn("memtis src %lx @ nid %d, dst @ nid %d, pid %d\n",
-		    page_to_pfn(page), pgdat->node_id, target_nid,
-		    current->pid);
-	}
+	// if (promotion) {
+	//     pr_warn("memtis src %lx @ nid %d, dst @ nid %d, pid %d\n",
+	// 	    page_to_pfn(page), pgdat->node_id, target_nid,
+	// 	    current->pid);
+	// }
     }
 
     nr_succeeded = nr_pages; // Deceive Memtis that all the pages are migrated successfully.
