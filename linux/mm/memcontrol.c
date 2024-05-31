@@ -7597,7 +7597,11 @@ static ssize_t memcg_htmm_write(struct kernfs_open_file *of,
 	return -EINVAL;
 
     if (memcg->htmm_enabled) {
-	kmigraterd_init();
+	// XXX: Do not run kmigraterd. Otherwise, kmigraterd1 (NUMA node 1)
+	// takes 100% of a CPU core and kmigrated0 takes around 80% of a CPU
+	// core.
+	//
+	// kmigraterd_init();
     } else {
 	kmigraterd_stop();
     }
