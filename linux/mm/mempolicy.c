@@ -2104,54 +2104,57 @@ struct page *alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 		goto out;
 	}
 
-#ifdef CONFIG_HTMM /* alloc_pages_vma() */
-	if (vma->vm_mm && vma->vm_mm->htmm_enabled) {
-	    struct task_struct *p = current;
-	    struct mem_cgroup *memcg = mem_cgroup_from_task(p);
-	    unsigned long max_nr_pages;
-	    int nid = pol->mode == MPOL_PREFERRED ? first_node(pol->nodes) : node;
-	    int orig_nid = nid;
-	    unsigned int nr_pages = 1U << order;
-	    pg_data_t *pgdat = NODE_DATA(nid);
-	    
-	    if (!memcg || !memcg->htmm_enabled)
-		goto use_default_pol;
-
-	    max_nr_pages = READ_ONCE(memcg->nodeinfo[nid]->max_nr_base_pages);
-	    if (max_nr_pages == ULONG_MAX)
-		goto use_default_pol;
-
-	    while (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) + nr_pages)) {
-		if (htmm_cxl_mode) {
-		    nid = 1;
-		    break;
-		}
-		if ((nid = next_demotion_node(nid)) == NUMA_NO_NODE) {
-		    nid = first_memory_node;
-		    break;
-		}
-		max_nr_pages = READ_ONCE(memcg->nodeinfo[nid]->max_nr_base_pages);
-		pgdat = NODE_DATA(nid);
-	    }
-
-	    //nid = orig_nid;
-
-	    if (orig_nid != nid) {
-		WRITE_ONCE(memcg->nodeinfo[orig_nid]->need_demotion, true);
-		kmigraterd_wakeup(orig_nid);
-	    }
-	    else if (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) +
-			get_memcg_demotion_watermark(max_nr_pages))) {
-		WRITE_ONCE(memcg->nodeinfo[nid]->need_demotion, true);
-		kmigraterd_wakeup(nid);
-	    }
-	    
-	    mpol_cond_put(pol);
-	    page = __alloc_pages_node(nid, gfp | __GFP_THISNODE, order);
-	    goto out;
-	}
-use_default_pol:
-#endif
+// XXX: Do not run kmigraterd. (kmigraterd_wakeup leads to kernel panic.)
+//      Also, do not allocate pages for kmigraterd because it is unnecessary.
+//
+// #ifdef CONFIG_HTMM /* alloc_pages_vma() */
+// 	if (vma->vm_mm && vma->vm_mm->htmm_enabled) {
+// 	    struct task_struct *p = current;
+// 	    struct mem_cgroup *memcg = mem_cgroup_from_task(p);
+// 	    unsigned long max_nr_pages;
+// 	    int nid = pol->mode == MPOL_PREFERRED ? first_node(pol->nodes) : node;
+// 	    int orig_nid = nid;
+// 	    unsigned int nr_pages = 1U << order;
+// 	    pg_data_t *pgdat = NODE_DATA(nid);
+//	    
+// 	    if (!memcg || !memcg->htmm_enabled)
+// 		goto use_default_pol;
+//
+// 	    max_nr_pages = READ_ONCE(memcg->nodeinfo[nid]->max_nr_base_pages);
+// 	    if (max_nr_pages == ULONG_MAX)
+// 		goto use_default_pol;
+//
+// 	    while (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) + nr_pages)) {
+// 		if (htmm_cxl_mode) {
+// 		    nid = 1;
+// 		    break;
+// 		}
+// 		if ((nid = next_demotion_node(nid)) == NUMA_NO_NODE) {
+// 		    nid = first_memory_node;
+// 		    break;
+// 		}
+// 		max_nr_pages = READ_ONCE(memcg->nodeinfo[nid]->max_nr_base_pages);
+// 		pgdat = NODE_DATA(nid);
+// 	    }
+//
+// 	    //nid = orig_nid;
+//
+// 	    if (orig_nid != nid) {
+// 		WRITE_ONCE(memcg->nodeinfo[orig_nid]->need_demotion, true);
+// 		kmigraterd_wakeup(orig_nid);
+// 	    }
+// 	    else if (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) +
+// 			get_memcg_demotion_watermark(max_nr_pages))) {
+// 		WRITE_ONCE(memcg->nodeinfo[nid]->need_demotion, true);
+// 		kmigraterd_wakeup(nid);
+// 	    }
+//	    
+// 	    mpol_cond_put(pol);
+// 	    page = __alloc_pages_node(nid, gfp | __GFP_THISNODE, order);
+// 	    goto out;
+// 	}
+// use_default_pol:
+// #endif
 	if (pol->mode == MPOL_PREFERRED_MANY) {
 		page = alloc_pages_preferred_many(gfp, order, node, pol);
 		mpol_cond_put(pol);
