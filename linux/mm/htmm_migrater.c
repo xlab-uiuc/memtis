@@ -138,6 +138,7 @@ static bool need_toptier_demotion(pg_data_t *pgdat, struct mem_cgroup *memcg, un
     unsigned long fasttier_max_watermark, fasttier_min_watermark;
     int target_nid = htmm_cxl_mode ? 1 : next_demotion_node(pgdat->node_id);
     pg_data_t *target_pgdat;
+    long long nr_exceeded_signed;
   
     if (target_nid == NUMA_NO_NODE)
 	return false;
@@ -171,7 +172,13 @@ check_nr_need_promoted:
 	    return false;
     }
 
-    *nr_exceeded = nr_lru_pages + nr_need_promoted + fasttier_max_watermark - max_nr_pages;
+//     *nr_exceeded = nr_lru_pages + nr_need_promoted + fasttier_max_watermark - max_nr_pages;
+
+    // Prevent an underflow.
+    nr_exceeded_signed = (long long)nr_lru_pages + nr_need_promoted +
+			 fasttier_max_watermark - max_nr_pages;
+    *nr_exceeded = nr_exceeded_signed < 0 ? 0 : nr_exceeded_signed;
+
     return true;
 }
 
