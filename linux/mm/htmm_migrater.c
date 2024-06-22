@@ -19,10 +19,15 @@
 
 #include "internal.h"
 
-#define MIN_WATERMARK_LOWER_LIMIT   128 * 100 // 50MB
-#define MIN_WATERMARK_UPPER_LIMIT   2560 * 100 // 1000MB
-#define MAX_WATERMARK_LOWER_LIMIT   256 * 100 // 100MB
-#define MAX_WATERMARK_UPPER_LIMIT   3840 * 100 // 1500MB
+// #define MIN_WATERMARK_LOWER_LIMIT   128 * 100 // 50MB
+// #define MIN_WATERMARK_UPPER_LIMIT   2560 * 100 // 1000MB
+// #define MAX_WATERMARK_LOWER_LIMIT   256 * 100 // 100MB
+// #define MAX_WATERMARK_UPPER_LIMIT   3840 * 100 // 1500MB
+
+#define MIN_WATERMARK_LOWER_LIMIT   128 * 10 // 5MB
+#define MIN_WATERMARK_UPPER_LIMIT   2560 * 10 // 100MB
+#define MAX_WATERMARK_LOWER_LIMIT   256 * 10 // 10MB
+#define MAX_WATERMARK_UPPER_LIMIT   3840 * 10 // 150MB
 
 #ifdef ARCH_HAS_PREFETCHW
 #define prefetchw_prev_lru_page(_page, _base, _field)                   \
@@ -125,6 +130,7 @@ static unsigned long need_lowertier_promotion(pg_data_t *pgdat, struct mem_cgrou
     if (htmm_mode == HTMM_NO_MIG)
 	return 0;
 
+//     pr_warn("need_lowertier_promotion return: %lu\n", lruvec_size);
     return lruvec_size;
 }
 
@@ -154,6 +160,7 @@ static bool need_toptier_demotion(pg_data_t *pgdat, struct mem_cgroup *memcg, un
     fasttier_min_watermark = get_memcg_demotion_watermark(max_nr_pages);
 
     if (need_direct_demotion(pgdat, memcg)) {
+	// pr_warn("need_toptier_demotion: Check values.\n");
 	if (nr_lru_pages + fasttier_max_watermark <= max_nr_pages)
 	    goto check_nr_need_promoted;
 	else if (nr_lru_pages < max_nr_pages)
@@ -161,17 +168,34 @@ static bool need_toptier_demotion(pg_data_t *pgdat, struct mem_cgroup *memcg, un
 	else
 	    *nr_exceeded = nr_lru_pages + fasttier_max_watermark - max_nr_pages;
 	*nr_exceeded += 1U * 128 * 100; // 100 MB
+
+	// pr_warn("DEMOTE: need_toptier_demotion: return TRUE (direct).\n");
+	// pr_warn("OVERFLOW1: nr_exceeded=%lu nr_lru_pages=%lu fasttier_min_watermark=%lu fasttier_max_watermark=%lu max_nr_pages=%lu\n",
+	// 	*nr_exceeded, nr_lru_pages, fasttier_min_watermark,
+	// 	fasttier_max_watermark, max_nr_pages);
 	return true;
     }
 
 check_nr_need_promoted:
     nr_need_promoted = need_lowertier_promotion(target_pgdat, memcg);
     if (nr_need_promoted) {
-	if (nr_lru_pages + nr_need_promoted + fasttier_max_watermark <= max_nr_pages)
+	if (nr_lru_pages + nr_need_promoted + fasttier_max_watermark <= max_nr_pages){
+	//     pr_warn("DEMOTE: need_toptier_demotion: return FALSE (nr_need_promotion).\n");
+	//     pr_warn("        nr_lru_pages=%lu nr_need_promoted=%lu fasttier_max_watermark=%lu (%lu) <= max_nr_pages=%lu (fasttier_min_watermark=%lu)\n",
+	// 	    nr_lru_pages, nr_need_promoted, fasttier_max_watermark,
+	// 	    nr_lru_pages + nr_need_promoted + fasttier_max_watermark,
+	// 	    max_nr_pages, fasttier_min_watermark);
 	    return false;
+	}
     } else {
-	if (nr_lru_pages + fasttier_min_watermark <= max_nr_pages)
-	    return false;
+	if (nr_lru_pages + fasttier_min_watermark <= max_nr_pages){
+		// pr_warn("DEMOTE: need_toptier_demotion: return FALSE.\n");
+		// pr_warn("        nr_lru_pages=%lu fasttier_min_watermark=%lu (%lu) <= max_nr_pages=%lu (fasttier_max_watermark=%lu)\n",
+		// 	nr_lru_pages, fasttier_max_watermark,
+		// 	nr_lru_pages + fasttier_max_watermark, max_nr_pages,
+		// 	fasttier_min_watermark);
+		return false;
+	}
     }
 
 //     *nr_exceeded = nr_lru_pages + nr_need_promoted + fasttier_max_watermark - max_nr_pages;
@@ -180,6 +204,11 @@ check_nr_need_promoted:
     nr_exceeded_signed = (long long)nr_lru_pages + nr_need_promoted +
 			 fasttier_max_watermark - max_nr_pages;
     *nr_exceeded = nr_exceeded_signed < 0 ? 0 : nr_exceeded_signed;
+
+//     pr_warn("DEMOTE: need_toptier_demotion: return TRUE.\n");
+//     pr_warn("OVERFLOW2: nr_exceeded=%lu nr_lru_pages=%lu nr_need_promoted=%lu fasttier_min_watermark=%lu fasttier_max_watermark=%lu max_nr_pages=%lu\n",
+// 	    *nr_exceeded, nr_lru_pages, nr_need_promoted,
+// 	    fasttier_min_watermark, fasttier_max_watermark, max_nr_pages);
 
     return true;
 }
@@ -309,6 +338,7 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 static struct page *alloc_migrate_page(struct page *page, unsigned long node)
 {
     int nid = (int) node;
+    int from_nid;
     int zidx;
     struct page *newpage = NULL;
     gfp_t mask = (GFP_HIGHUSER_MOVABLE |
@@ -332,8 +362,31 @@ static struct page *alloc_migrate_page(struct page *page, unsigned long node)
 
 	prep_transhuge_page(newpage);
 	__prep_transhuge_page_for_htmm(NULL, newpage);
-    } else
+    } else {
 	newpage = __alloc_pages_node(nid, mask, 0);
+
+	// pr_warn("memtis migration: src %lx @ nid %d, dst %lx @ nid %d\n",
+		// page_to_pfn(page), page_to_nid(page), page_to_pfn(newpage), nid);
+
+//	if (page_to_pfn(newpage) == 0xb00000000000) { // Print only errors.
+//		from_nid = page_to_nid(page);
+//		if (from_nid < nid) { // demote
+//			pr_warn("DE nid: %d -> %d addr: %lx -> %lx\n",
+//				page_to_nid(page), nid, page_to_pfn(page),
+//				page_to_pfn(newpage));
+//
+//		} else if (from_nid > nid) { // promote
+//			pr_warn("PRO nid: %d -> %d addr: %lx -> %lx\n",
+//				page_to_nid(page), nid, page_to_pfn(page),
+//				page_to_pfn(newpage));
+//
+//		} else {
+//			pr_warn("(ERROR) incorrect migration. nid: %d -> %d addr: %lx -> %lx\n",
+//				page_to_nid(page), nid, page_to_pfn(page),
+//				page_to_pfn(newpage));
+//		}
+//	}
+    }
 
     return newpage;
 }
@@ -343,20 +396,72 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
 {
     int target_nid;
     unsigned int nr_succeeded = 0;
+    int ret = 0;
+    struct page *page;
+    struct page *page2;
+    unsigned long pfn = 0, new_pfn = 0;
+    unsigned long nr_pages = 0;
 
     if (promotion)
 	target_nid = htmm_cxl_mode ? 0 : next_promotion_node(pgdat->node_id);
     else
 	target_nid = htmm_cxl_mode ? 1 : next_demotion_node(pgdat->node_id);
 
-    if (list_empty(migrate_list))
+    if (list_empty(migrate_list)){
+	// if (promotion){
+	// 	pr_warn("PRO: %d \t\t\t migrate_page_list: empty list\n", pgdat->node_id);
+	// }
+	// else {
+	// 	pr_warn("DEMOTE: %d \t\t\t migrate_page_list: empty list\n", pgdat->node_id);
+	// }
+
 	return 0;
+    }
 
     if (target_nid == NUMA_NO_NODE)
 	return 0;
 
-    migrate_pages(migrate_list, alloc_migrate_page, NULL,
+//     list_for_each_entry_safe (page, page2, migrate_list, lru) {
+// 	    new_pfn = page_to_pfn(page);
+
+// 	    if (pfn != 0 && new_pfn == pfn) {
+// 		    pr_warn("(WARN) same pages in the list nid: %d -> %d addr: %lx pid=%d\n",
+// 			    pgdat->node_id, target_nid, page_to_pfn(page),
+// 			    current->pid);
+// 	    }
+// 	    pfn = new_pfn;
+// 	    nr_pages++;
+//     }
+
+//     if (promotion) {
+// 	    pr_warn("PRO: %d \t\t\t migrate_page_list: nr_pages=%lu\n", pgdat->node_id, nr_pages);
+//     }
+//     else {
+// 	    pr_warn("DEMOTE: %d \t\t\t migrate_page_list: nr_pages=%lu\n", pgdat->node_id, nr_pages);
+//     }
+
+    ret = migrate_pages(migrate_list, alloc_migrate_page, NULL,
 	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
+
+//    if (ret < 0) {
+//	    if (promotion)
+//		    pr_warn("PRO: %d \t\t\t migrate FAILED!\n", pgdat->node_id);
+//	//     else
+//	// 	    pr_warn("DEMOTE: %d \t\t\t migrate FAILED!\n", pgdat->node_id);
+//
+//    } else if (ret) {
+//	    if (promotion)
+//		    pr_warn("PRO: %d \t\t\t migrated (success / failed) = (%u / %d)\n",
+//			    pgdat->node_id, nr_succeeded, ret);
+//	//     else
+//	// 	    pr_warn("DEMOTE: %d \t\t\t migrated (success / failed) = (%u / %d)\n",
+//	// 		    pgdat->node_id, nr_succeeded, ret);
+//    } else {
+//	    if (promotion)
+//		    pr_warn("PRO: %d \t\t\t migrate success (%d)\n", pgdat->node_id, nr_succeeded);
+//	//     else
+//	// 	    pr_warn("DEMOTE: %d \t\t\t migrate success (%d)\n", pgdat->node_id, nr_succeeded);
+//    }
 
     if (promotion)
 	count_vm_events(HTMM_NR_PROMOTED, nr_succeeded);
@@ -383,32 +488,66 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	page = lru_to_page(page_list);
 	list_del(&page->lru);
 
-	if (!trylock_page(page))
+	if (!trylock_page(page)){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 1\n", pgdat->node_id, __func__);
 	    goto keep;
-	if (!shrink_active && PageAnon(page) && PageActive(page))
+	}
+	if (!shrink_active && PageAnon(page) && PageActive(page)){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 2\n", pgdat->node_id, __func__);
 	    goto keep_locked;
-	if (unlikely(!page_evictable(page)))
+	}
+	if (unlikely(!page_evictable(page))){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 3\n", pgdat->node_id, __func__);
 	    goto keep_locked;
-	if (PageWriteback(page))
+	}
+	if (PageWriteback(page)){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 4\n", pgdat->node_id, __func__);
 	    goto keep_locked;
-	if (PageTransHuge(page) && !thp_migration_supported())
+	}
+	if (PageTransHuge(page) && !thp_migration_supported()){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 5\n", pgdat->node_id, __func__);
 	    goto keep_locked;
-	if (!PageAnon(page) && nr_demotion_cand > nr_to_reclaim + HTMM_MIN_FREE_PAGES)
+	}
+	if (!PageAnon(page) && nr_demotion_cand > nr_to_reclaim + HTMM_MIN_FREE_PAGES){
+	//     pr_warn("DEMOTE: %d \t\t (%s) 6\n", pgdat->node_id, __func__);
 	    goto keep_locked;
+	}
 
 	if (htmm_nowarm == 0 && PageAnon(page)) {
 	    if (PageTransHuge(page)) {
 		struct page *meta = get_meta_page(page);
 
-		if (meta->idx >= memcg->warm_threshold)
-		    goto keep_locked;
+		if (meta->idx >= memcg->warm_threshold){
+			// pr_warn("DEMOTE: %d \t\t (%s) 7 meta->idx=%u memcg->warm_threshold=%u\n",
+			// 	pgdat->node_id, __func__, meta->idx,
+			// 	memcg->warm_threshold);
+			goto keep_locked;
+		}
+		// else {
+		// 	pr_warn("DEMOTE: %d \t\t (%s) 9-1 meta->idx=%u memcg->warm_threshold=%u\n",
+		// 		pgdat->node_id, __func__, meta->idx,
+		// 		memcg->warm_threshold);
+		// }
+
+
 	    } else {
 		unsigned int idx = get_pginfo_idx(page);
 
-		if (idx >= memcg->warm_threshold)
+		if (idx >= memcg->warm_threshold){
+			// pr_warn("DEMOTE: %d \t\t (%s) 8 idx=%u memcg->warm_threshold=%u\n",
+			// 	pgdat->node_id, __func__, idx,
+			// 	memcg->warm_threshold);
 		    goto keep_locked;
+		}
+		// else {
+		// 	pr_warn("DEMOTE: %d \t\t (%s) 9-2 idx=%u memcg->warm_threshold=%u\n",
+		// 		pgdat->node_id, __func__, idx,
+		// 		memcg->warm_threshold);
+		// }
 	    }
 	}
+
+	// pr_warn("DEMOTE: %d \t\t (%s) 9\n", pgdat->node_id, __func__);
 
 	unlock_page(page);
 	list_add(&page->lru, &demote_pages);
@@ -488,12 +627,17 @@ static unsigned long demote_inactive_list(unsigned long nr_to_scan,
     __mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
     spin_unlock_irq(&lruvec->lru_lock);
 
+//     pr_warn("DEMOTE: %d \t (%s) nr_taken=%lu\n", pgdat->node_id, __func__, nr_taken);
+
     if (nr_taken == 0) {
 	return 0;
     }
 
     nr_reclaimed = shrink_page_list(&page_list, pgdat, lruvec_memcg(lruvec),
 	    shrink_active, nr_to_reclaim);
+
+//     pr_warn("DEMOTE: %d \t (%s) shrink_page_list returns: nr_taken=%lu nr_reclaimed=%lu\n",
+// 	    pgdat->node_id, __func__, nr_taken, nr_reclaimed);
 
     spin_lock_irq(&lruvec->lru_lock);
     move_pages_to_lru(lruvec, &page_list);
@@ -523,6 +667,8 @@ static unsigned long promote_active_list(unsigned long nr_to_scan,
     if (nr_taken == 0)
 	return 0;
 
+//     pr_warn("[KPROMOTED] in promote_active_list() nr_taken=%lu\n", nr_taken);
+
     nr_promoted = promote_page_list(&page_list, pgdat);
 
     spin_lock_irq(&lruvec->lru_lock);
@@ -542,6 +688,7 @@ static unsigned long demote_lruvec(unsigned long nr_to_reclaim, short priority,
     enum lru_list lru, tmp;
     unsigned long nr_reclaimed = 0;
     long nr_to_scan;
+    unsigned long i = 0;
 
     /* we need to scan file lrus first */
     for_each_evictable_lru(tmp) {
@@ -562,14 +709,32 @@ static unsigned long demote_lruvec(unsigned long nr_to_reclaim, short priority,
 	if (!nr_to_scan)
 	    continue;
 
+	i = 0;
+
+	// pr_warn("DEMOTE: %d (begin) nr_to_scan=%ld nr_to_reclaim=%lu\n", pgdat->node_id, nr_to_scan, nr_to_reclaim);
+
 	while (nr_to_scan > 0) {
+
 	    unsigned long scan = min(nr_to_scan, SWAP_CLUSTER_MAX);
 	    nr_reclaimed += demote_inactive_list(scan, scan,
 					     lruvec, lru, shrink_active);
 	    nr_to_scan -= (long)scan;
+
+	//     pr_warn("DEMOTE: %d (%lu) scan(remains/this_iter)=( %ld / %ld ) reclaim(to/done)=( %lu / %lu)\n",
+	// 	    pgdat->node_id, i, nr_to_scan, scan, nr_to_reclaim, nr_reclaimed);
+	    i++;
+
 	    if (nr_reclaimed >= nr_to_reclaim)
 		break;
+
+	    // XXX: for debugging.
+	//     msleep_interruptible(1000);
 	}
+
+	// if (nr_reclaimed > 0){
+	// 	pr_warn("DEMOTE: %d (end) nr_to_reclaim / nr_reclaimed = (%lu / %lu)\n",
+	// 		pgdat->node_id, nr_to_reclaim, nr_reclaimed);
+	// }
 
 	if (nr_reclaimed >= nr_to_reclaim)
 	    break;
@@ -606,10 +771,13 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	nr_evictable_pages += lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
     }
     
-    nr_to_reclaim = nr_exceeded;	
-    
+    nr_to_reclaim = nr_exceeded;
+
     if (nr_exceeded > nr_evictable_pages && need_direct_demotion(pgdat, memcg))
 	shrink_active = true;
+
+//     pr_warn("DEMOTE START: %d (%s) ******SSSSSS******** nr_to_reclaim=%lu nr_evictable_pages=%lu shrink_active=%d\n",
+// 	    pgdat->node_id, __func__, nr_to_reclaim, nr_evictable_pages, shrink_active);
 
     do {
 	nr_reclaimed += demote_lruvec(nr_to_reclaim - nr_reclaimed, priority,
@@ -618,6 +786,8 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	    break;
 	priority--;
     } while (priority);
+
+//     pr_warn("DEMOTE END: %d (%s) *******EEEEEE******* nr_reclaimed=%lu\n", pgdat->node_id, __func__, nr_reclaimed);
 
     if (htmm_nowarm == 0) {
 	int target_nid = htmm_cxl_mode ? 1 : next_demotion_node(pgdat->node_id);
@@ -647,6 +817,8 @@ static unsigned long promote_node(pg_data_t *pgdat, struct mem_cgroup *memcg)
     enum lru_list lru = LRU_ACTIVE_ANON;
     short priority = DEF_PRIORITY;
     int target_nid = htmm_cxl_mode ? 0 : next_promotion_node(pgdat->node_id);
+
+//     pr_warn("[KPROMOTED] promote_node() nid=%d.\n", pgdat->node_id);
 
     if (!promotion_available(target_nid, memcg, &nr_to_promote))
 	return 0;
@@ -770,6 +942,9 @@ static void cooling_node(pg_data_t *pgdat, struct mem_cgroup *memcg)
     struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
     struct mem_cgroup_per_node *pn = memcg->nodeinfo[pgdat->node_id];
     enum lru_list lru = LRU_ACTIVE_ANON; 
+
+
+//     pr_warn("[KPROMOTED] cooling_node() nid=%d.\n", pgdat->node_id);
 
 re_cooling:
     nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
@@ -912,6 +1087,8 @@ static void adjusting_node(pg_data_t *pgdat, struct mem_cgroup *memcg, bool acti
     unsigned long nr_to_scan, nr_scanned = 0, nr_max_scan =12;
     unsigned int nr_huge = 0, nr_base = 0;
 
+//     pr_warn("[KPROMOTED] in adjusting_node() nid=%d\n", pgdat->node_id);
+
     nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
     do {
 	unsigned long scan = nr_to_scan >> 3;
@@ -948,8 +1125,11 @@ static int kmigraterd_demotion(pg_data_t *pgdat)
 {
     const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
 
-    if (!cpumask_empty(cpumask))
-	set_cpus_allowed_ptr(pgdat->kmigraterd, cpumask);
+    if (!cpumask_empty(cpumask)) {
+	    set_cpus_allowed_ptr(pgdat->kmigraterd, cpumask);
+	//     pr_warn("kmigraterd (DE): CPU affinity: 0x%lu\n",
+	// 	    cpumask->bits[0]);
+    }
 
     for ( ; ; ) {
 	struct mem_cgroup_per_node *pn;
@@ -1018,8 +1198,10 @@ static int kmigraterd_promotion(pg_data_t *pgdat)
     else
 	cpumask = cpumask_of_node(pgdat->node_id - 2);
 
-    if (!cpumask_empty(cpumask))
+    if (!cpumask_empty(cpumask)) {
 	set_cpus_allowed_ptr(pgdat->kmigraterd, cpumask);
+	// pr_warn("kmigraterd (PRO): CPU affinity: 0x%lu\n", cpumask->bits[0]);
+    }
 
     for ( ; ; ) {
 	struct mem_cgroup_per_node *pn;
@@ -1035,6 +1217,8 @@ static int kmigraterd_promotion(pg_data_t *pgdat)
 	    continue;
 	}
 
+	// pr_warn("[KPROMOTED] nid=%d resume.\n", pgdat->node_id);
+
 	memcg = pn->memcg;
 	if (!memcg || !memcg->htmm_enabled) {
 	    spin_lock(&pgdat->kmigraterd_lock);
@@ -1043,6 +1227,8 @@ static int kmigraterd_promotion(pg_data_t *pgdat)
 	    spin_unlock(&pgdat->kmigraterd_lock);
 	    continue;
 	}
+
+	// pr_warn("[KPROMOTED] 2222222\n");
 
 	/* performs split */
 	if (htmm_thres_split != 0 &&
@@ -1104,9 +1290,17 @@ static void kmigraterd_run(int nid)
     if (!pgdat || pgdat->kmigraterd)
 	return;
 
+    // XXX HARDCODING do not create kmigraterd for CXL memory. We are emulating
+    // CXL memory with NUMA node 1.
+    if (nid == 2)
+	    return;
+
     init_waitqueue_head(&pgdat->kmigraterd_wait);
 
     pgdat->kmigraterd = kthread_run(kmigraterd, pgdat, "kmigraterd%d", nid);
+
+//     pr_warn("kmigraterd%d started\n", nid);
+
     if (IS_ERR(pgdat->kmigraterd)) {
 	pr_err("Fails to start kmigraterd on node %d\n", nid);
 	pgdat->kmigraterd = NULL;

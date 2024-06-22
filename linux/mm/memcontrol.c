@@ -7697,7 +7697,10 @@ static int memcg_hotness_stat_show(struct seq_file *m, void *v)
 	    cold += memcg->hotness_hg[i];
     }
 
-    seq_buf_printf(&s, "hot %lu warm %lu cold %lu\n", hot, warm, cold);
+    seq_buf_printf(
+	    &s,
+	    "hot %lu warm %lu cold %lu thresholds (hot / warm) = (%u / %u)\n",
+	    hot, warm, cold, memcg->active_threshold, memcg->warm_threshold);
 
     seq_puts(m, s.buffer);
     kfree(s.buffer);

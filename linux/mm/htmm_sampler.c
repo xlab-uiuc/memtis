@@ -31,7 +31,7 @@ static __u64 get_pebs_event(enum events e)
 	    return DRAM_LLC_LOAD_MISS;
 	case NVMREAD:
 	    if (!htmm_cxl_mode)
-		return NVM_LLC_LOAD_MISS;
+		return NVM_LLC_LOAD_MISS; // Optane persistent memory.
 	    else
 		return N_HTMMEVENTS;
 	case MEMWRITE:
@@ -212,6 +212,8 @@ static int ksamplingd(void *data)
     if (!cpumask_empty(cpumask))
 	do_set_cpus_allowed(access_sampling, cpumask);
 
+//     pr_warn("Running ksamplingd\n");
+
     while (!kthread_should_stop()) {
 	int cpu, event, cond = false;
     
@@ -247,7 +249,7 @@ static int ksamplingd(void *data)
 		    up = READ_ONCE(rb->user_page);
 		    head = READ_ONCE(up->data_head);
 		    if (head == up->data_tail) {
-			if (cpu < 16)
+			if (cpu < 16) // TOCHECK: What is this for? Need to adjust?
 			    nr_skip++;
 			//continue;
 			break;
@@ -278,7 +280,7 @@ static int ksamplingd(void *data)
 			    }
 
 			    update_pginfo(he->pid, he->addr, event);
-			    //count_vm_event(HTMM_NR_SAMPLED);
+			//     count_vm_event(HTMM_NR_SAMPLED);
 			    nr_sampled++;
 
 			    if (event == DRAMREAD) {
@@ -306,6 +308,8 @@ static int ksamplingd(void *data)
 		    if (nr_sampled % 500000 == 0) {
 			trace_printk("nr_sampled: %llu, nr_dram: %llu, nr_nvm: %llu, nr_write: %llu, nr_throttled: %llu \n", nr_sampled, nr_dram, nr_nvm, nr_write,
 				nr_throttled);
+			// pr_warn("nr_sampled: %llu, nr_dram: %llu, nr_nvm: %llu, nr_write: %llu, nr_throttled: %llu \n", nr_sampled, nr_dram, nr_nvm, nr_write,
+			// 	nr_throttled);
 			nr_dram = 0;
 			nr_nvm = 0;
 			nr_write = 0;
@@ -322,6 +326,11 @@ static int ksamplingd(void *data)
 
 	/* sleep */
 	schedule_timeout_interruptible(sleep_timeout);
+	// if (nr_sampled % 100000 == 0) {
+	// 	pr_warn("ksamplingd: nr_sampled: %llu, nr_dram: %llu, nr_nvm: %llu, nr_write: %llu, nr_throttled: %llu, nr_lost: %llu\n",
+	// 		nr_sampled, nr_dram, nr_nvm, nr_write, nr_throttled,
+	// 		nr_lost);
+	// }
 
 	/* check elasped time */
 	cur = jiffies;

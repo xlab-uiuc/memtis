@@ -1205,6 +1205,9 @@ static bool __cooling(struct mm_struct *mm,
 	if (pn && READ_ONCE(pn->need_cooling)) {
 	    spin_lock(&memcg->access_lock);
 	    memcg->cooling_clock++;
+
+	//     pr_warn("COOL: nid=%d, cooling_clock=%u false\n", nid, memcg->cooling_clock);
+
 	    spin_unlock(&memcg->access_lock);
 	    return false;
 	}
@@ -1214,6 +1217,9 @@ static bool __cooling(struct mm_struct *mm,
 
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
+
+//     pr_warn("COOL: nid=%d, cooling_clock=%u true\n", nid, memcg->cooling_clock);
+
     memcg->bp_active_threshold--;
     memcg->cooled = true;
     smp_mb();
@@ -1324,8 +1330,12 @@ static bool need_memcg_cooling (struct mem_cgroup *memcg)
     unsigned long usage = page_counter_read(&memcg->memory);
     if (memcg->nr_alloc + htmm_thres_cooling_alloc <= usage) {
 	memcg->nr_alloc = usage;
+
+	// pr_warn("COOL: need_memcg_cooling return TRUE.\n");
+
 	return true;	
     }
+
     return false;
 }
 
@@ -1429,6 +1439,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
     }
     /* threshold adaptation */
     else if (memcg->nr_sampled % htmm_adaptation_period == 0) {
+	// pr_warn("THRES: Adjust thresholds.\n");
 	__adjust_active_threshold(mm, memcg);
     }
 

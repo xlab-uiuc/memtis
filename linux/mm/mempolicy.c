@@ -3044,8 +3044,10 @@ unsigned int htmm_util_weight = 10; // no impact (unused)
 unsigned int htmm_mode = 1;
 unsigned int htmm_gamma = 4; /* 0.4; divide this by 10 */
 bool htmm_cxl_mode = false;
-bool htmm_skip_cooling = true;
-unsigned int htmm_thres_cooling_alloc = 256 * 1024 * 10; // unit: 4KiB, default: 10GB
+// bool htmm_skip_cooling = true;
+bool htmm_skip_cooling = false;
+// unsigned int htmm_thres_cooling_alloc = 256 * 1024 * 10; // unit: 4KiB, default: 10GB
+unsigned int htmm_thres_cooling_alloc = 256 * 1024; // unit: 4KiB, default: 1GB
 unsigned int ksampled_soft_cpu_quota = 30; // 3 %
 #endif
 

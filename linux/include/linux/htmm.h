@@ -10,7 +10,7 @@
 /* pebs events */
 #define DRAM_LLC_LOAD_MISS  0x1d3
 #define REMOTE_DRAM_LLC_LOAD_MISS   0x2d3
-#define NVM_LLC_LOAD_MISS   0x80d1
+#define NVM_LLC_LOAD_MISS   0x80d1 // Optane persistent memory.
 #define ALL_STORES	    0x82d0
 #define ALL_LOADS	    0x81d0
 #define STLB_MISS_STORES    0x12d0
