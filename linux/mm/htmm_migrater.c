@@ -440,8 +440,25 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
 // 	    pr_warn("DEMOTE: %d \t\t\t migrate_page_list: nr_pages=%lu\n", pgdat->node_id, nr_pages);
 //     }
 
-    ret = migrate_pages(migrate_list, alloc_migrate_page, NULL,
-	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
+    if (promotion) {
+	    // XXX, log targeted migrating pages (only promotions)
+	    list_for_each_entry_safe (page, page2, migrate_list, lru) {
+		    nr_pages++;
+		    if (promotion) {
+			    pr_warn("memtis src %lx @ nid %d, dst @ nid %d, pid %d\n",
+				    page_to_pfn(page), pgdat->node_id,
+				    target_nid, current->pid);
+		    }
+	    }
+
+	    nr_succeeded =
+		    nr_pages; // Deceive Memtis that all the pages are migrated successfully.
+
+    } else { // Do demotion to trigger promotions.
+	    ret = migrate_pages(migrate_list, alloc_migrate_page, NULL,
+				target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED,
+				&nr_succeeded);
+    }
 
 //    if (ret < 0) {
 //	    if (promotion)
