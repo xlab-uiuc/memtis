@@ -1292,8 +1292,8 @@ static void kmigraterd_run(int nid)
 
     // XXX HARDCODING do not create kmigraterd for CXL memory. We are emulating
     // CXL memory with NUMA node 1.
-    if (nid == 2)
-	    return;
+    // if (nid == 2)
+    //         return;
 
     init_waitqueue_head(&pgdat->kmigraterd_wait);
 
